@@ -39,7 +39,7 @@ module OmniAuth
         end
       end
 
-      uid { raw_info['sub'] }
+      uid { raw_info['id'] }
 
       info do
         prune!(
@@ -57,43 +57,16 @@ module OmniAuth
       extra do
         hash = {}
         hash[:id_token] = access_token['id_token']
-        if !options[:skip_jwt] && !access_token['id_token'].nil?
-          hash[:id_info] = JWT.decode(
-            access_token['id_token'], nil, false, verify_iss: true,
-                                                  iss: 'accounts.google.com',
-                                                  verify_aud: true,
-                                                  aud: options.client_id,
-                                                  verify_sub: false,
-                                                  verify_expiration: true,
-                                                  verify_not_before: true,
-                                                  verify_iat: true,
-                                                  verify_jti: false,
-                                                  leeway: options[:jwt_leeway]
-          ).first
-        end
         hash[:raw_info] = raw_info unless skip_info?
-        hash[:raw_friend_info] = raw_friend_info(raw_info['sub']) unless skip_info? || options[:skip_friends]
-        hash[:raw_image_info] = raw_image_info(raw_info['sub']) unless skip_info? || options[:skip_image_info]
         prune! hash
       end
 
       def raw_info
-        @raw_info ||= access_token.get('https://www.googleapis.com/plus/v1/people/me/openIdConnect').parsed
-      end
-
-      def raw_friend_info(id)
-        @raw_friend_info ||= access_token.get("https://www.googleapis.com/plus/v1/people/#{id}/people/visible").parsed
-      end
-
-      def raw_image_info(id)
-        @raw_image_info ||= access_token.get("https://www.googleapis.com/plus/v1/people/#{id}?fields=image").parsed
+        @raw_info ||= access_token.get('https://www.googleapis.com/oauth2/v1/userinfo').parsed
       end
 
       def custom_build_access_token
-        access_token = get_access_token(request)
-
-        verify_hd(access_token)
-        access_token
+        get_access_token(request)
       end
       alias build_access_token custom_build_access_token
 
@@ -139,7 +112,7 @@ module OmniAuth
       end
 
       def verified_email
-        raw_info['email_verified'] ? raw_info['email'] : nil
+        (raw_info['email_verified'] || raw_info['verified_email']) ? raw_info['email'] : nil
       end
 
       def image_url
@@ -197,16 +170,6 @@ module OmniAuth
         raw_response['aud'] == options.client_id || options.authorized_client_ids.include?(raw_response['aud'])
       end
 
-      def verify_hd(access_token)
-        return true unless options.hd
-        @raw_info ||= access_token.get('https://www.googleapis.com/plus/v1/people/me/openIdConnect').parsed
-
-        options.hd = options.hd.call if options.hd.is_a? Proc
-        allowed_hosted_domains = Array(options.hd)
-
-        raise CallbackError.new(:invalid_hd, 'Invalid Hosted Domain') unless allowed_hosted_domains.include? @raw_info['hd']
-        true
-      end
     end
   end
 end
